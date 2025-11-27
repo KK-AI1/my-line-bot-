@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Store ダッシュボード</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+                 function showMessage(message, type) {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+        
+        // セッション詳細を表示する関数
+        async function showSessionDetail(sessionId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/session_store_info`);
+                const info = await response.json();
+                
+                if (info.error) {
+                    showMessage(info.error, 'error');
+                    return;
+                }
+                
+                const sessionData = info.sessions[sessionId];
+                if (!sessionData) {
+                    showMessage(`セッション ${sessionId} が見つかりません`, 'error');
+                    return;
+                }
+                
+                displaySessionDetailModal(sessionId, sessionData);
+                
+            } catch (error) {
+                showMessage(`セッション詳細取得エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        // セッション詳細モーダルの内容を表示
+        function displaySessionDetailModal(sessionId, data) {
+            const modal = document.getElementById('sessionModal');
+            const content = document.getElementById('sessionDetailContent');
+            
+            // 会話ログを整形
+            let conversationHTML = '';
+            if (data.conversation_logs && data.conversation_logs.length > 0) {
+                conversationHTML = `
+                    <h3>会話ログ (${data.conversation_logs.length}件)</h3>
+                    <div class="conversation-log">
+                `;
+                
+                data.conversation_logs.forEach((log, index) => {
+                    const roleClass = log.role === 'user' ? 'conversation-user' : 'conversation-assistant';
+                    const roleLabel = log.role === 'user' ? 'ユーザー' : 'アシスタント';
+                    conversationHTML += `
+                        <div class="conversation-item ${roleClass}">
+                            <div class="conversation-role">${roleLabel}:</div>
+                            <div>${log.content || ''}</div>
+                        </div>
+                    `;
+                });
+                
+                conversationHTML += '</div>';
+            } else {
+                conversationHTML = '<h3>会話ログ</h3><p>会話履歴がありません</p>';
+            }
+            
+            // メモリ情報を整形
+            let memoryHTML = '';
+            if (data.memory_store) {
+                memoryHTML = `
+                    <h3>メモリ情報</h3>
+                    <div class="memory-section">
+                        <div class="memory-title">短期記憶:</div>
+                        <div>${data.memory_store.shortMemories || '(なし)'}</div>
+                    </div>
+                    <div class="memory-section">
+                        <div class="memory-title">中期記憶:</div>
+                        <div>${data.memory_store.midMemories || '(なし)'}</div>
+                    </div>
+                    <div class="memory-section">
+                        <div class="memory-title">長期記憶:</div>
+                        <div>${data.memory_store.longMemories || '(なし)'}</div>
+                    </div>
+                `;
+            }
+            
+            content.innerHTML = `
+                <div class="detail-grid">
+                    <div class="detail-label">セッションID:</div>
+                    <div class="detail-value"><code>${sessionId}</code></div>
+                    
+                    <div class="detail-label">ユーザー名:</div>
+                    <div class="detail-value">${data.userName || 'ユーザー'}</div>
+                    
+                    <div class="detail-label">秘密の約束:</div>
+                    <div class="detail-value">${data.promise || '(未設定)'}</div>
+                    
+                    <div class="detail-label">キャラクターID:</div>
+                    <div class="detail-value">${data.character_id || '(未設定)'}</div>
+                    
+                    <div class="detail-label">キャラクター役割:</div>
+                    <div class="detail-value">${data.character_role || '(未設定)'}</div>
+                    
+                    <div class="detail-label">TTS有効:</div>
+                    <div class="detail-value">${data.tts_enable ? '✅ 有効' : '❌ 無効'}</div>
+                    
+                    <div class="detail-label">中断状態:</div>
+                    <div class="detail-value">${data.abort ? '⏸️ 中断中' : '▶️ 正常'}</div>
+                    
+                    <div class="detail-label">作成時間:</div>
+                    <div class="detail-value">${data.created_at || '不明'}</div>
+                    
+                    <div class="detail-label">最終活動:</div>
+                    <div class="detail-value">${data.last_activity || '不明'}</div>
+                    
+                    <div class="detail-label">会話数:</div>
+                    <div class="detail-value">${data.conversation_count || 0}件</div>
+                </div>
+                
+                ${conversationHTML}
+                ${memoryHTML}
+            `;
+            
+            modal.style.display = 'block';
+        }
+        
+        // ページ読み込み時にデータを取得-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #bd2130;
+        }
+        .session-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .session-table th,
+        .session-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .session-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .session-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .session-table tr:hover {
+            background-color: #e9ecef;
+        }
+        .promise-list {
+            background: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .promise-item {
+            background: white;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #007bff;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .session-detail {
+            background: #f8f9fa;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .delete-btn:hover {
+            background-color: #bd2130;
+        }
+        .bulk-delete-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .bulk-delete-btn:hover {
+            background-color: #bd2130;
+        }
+        .bulk-delete-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .select-all-container {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .session-checkbox {
+            margin-right: 5px;
+        }
+        .session-id-link {
+            color: #007bff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .session-id-link:hover {
+            color: #0056b3;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            position: absolute;
+            right: 15px;
+            top: 10px;
+        }
+        .close:hover,
+        .close:focus {
+            color: #000;
+        }
+        .modal-title {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #555;
+        }
+        .detail-value {
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 3px;
+            word-break: break-all;
+        }
+        .conversation-log {
+            background: #f8f9fa;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .conversation-entry {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+            background: #f8f9fa;
+        }
+        .conversation-user {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .conversation-assistant {
+            background: #f3e5f5;
+            border-left: 4px solid #9c27b0;
+        }
+        .conversation-meta {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .conversation-role {
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .conversation-content {
+            white-space: pre-wrap;
+            line-height: 1.4;
+            padding: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .conversation-history {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+        }
+        .accordion-panel .conversation-history {
+            padding: 10px;
+            background: #fff;
+        }
+        .memory-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .memory-log-section {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .memory-store-section {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        .memory-log-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #17a2b8;
+        }
+        .memory-store-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #28a745;
+        }
+        .memory-log-key, .memory-store-key {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        .memory-log-value, .memory-store-value {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 3px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .memory-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #856404;
+        }
+        .accordion {
+            background-color: #f8f9fa;
+            color: #495057;
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: 1px solid #dee2e6;
+            text-align: left;
+            outline: none;
+            font-size: 16px;
+            font-weight: bold;
+            transition: 0.4s;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .accordion:hover {
+            background-color: #e9ecef;
+        }
+        .accordion.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .accordion-icon {
+            font-size: 12px;
+            transition: transform 0.3s ease;
+        }
+        .accordion.active .accordion-icon {
+            transform: rotate(180deg);
+        }
+        .accordion-panel {
+            padding: 0;
+            background-color: white;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        .accordion-panel.show {
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .section-header h2 {
+            margin: 0;
+            color: #495057;
+        }
+        .last-update {
+            font-size: 0.9em;
+            color: #6c757d;
+            font-style: italic;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-radius: 15px;
+            border: 1px solid #dee2e6;
+        }
+        .array-container {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+        .array-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .array-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            padding: 8px;
+        }
+        .array-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .item-number {
+            font-weight: bold;
+            color: #495057;
+        }
+        .item-timestamp {
+            color: #6c757d;
+            font-family: monospace;
+        }
+        .item-role {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .item-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .btn-edit, .btn-delete, .btn-small, .btn-save, .btn-cancel {
+            padding: 2px 8px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+        .btn-edit {
+            background: #007bff;
+            color: white;
+        }
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-small {
+            background: #28a745;
+            color: white;
+        }
+        .btn-save {
+            background: #28a745;
+            color: white;
+        }
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-edit:hover { background: #0056b3; }
+        .btn-delete:hover { background: #bd2130; }
+        .btn-small:hover { background: #1e7e34; }
+        .btn-save:hover { background: #1e7e34; }
+        .btn-cancel:hover { background: #545b62; }
+        .array-item-content {
+            padding: 5px;
+            background: #f8f9fa;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.85em;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+        .edit-form {
+            background: #fff;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .edit-form input, .edit-form textarea, .edit-form select {
+            width: 100%;
+            margin-bottom: 5px;
+            padding: 5px;
+            border: 1px solid #ced4da;
+            border-radius: 3px;
+        }
+        .edit-form textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        .edit-form-actions {
+            display: flex;
+            gap: 5px;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Session Store ダッシュボード</h1>
+        
+        <div class="stats-grid" id="statsGrid">
+            <!-- 統計情報がここに表示されます -->
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="refreshData()">🔄 更新</button>
+            <button class="btn btn-success" onclick="saveSessionStore()">💾 保存</button>
+            <button class="btn btn-primary" onclick="loadSessionStore()">📂 読み込み</button>
+            <button class="btn btn-warning" onclick="cleanupOldSessions()">🧹 古いセッション削除</button>
+            <button class="btn btn-danger" onclick="clearAllSessions()" 
+                    onclick="return confirm('すべてのセッションを削除します。この操作は取り消せません。本当に実行しますか？')">
+                🗑️ 全削除
+            </button>
+        </div>
+        
+        <div id="messageArea"></div>
+        
+        <div id="sessionDetails">
+            <div class="section-header">
+                <h2>📊 セッション詳細</h2>
+                <div id="lastUpdateTime" class="last-update">
+                    最終更新: --
+                </div>
+            </div>
+            <div class="select-all-container">
+                <label>
+                    <input type="checkbox" id="selectAllSessions" onchange="toggleAllSessions()">
+                    全選択
+                </label>
+                <button id="bulkDeleteBtn" class="bulk-delete-btn" onclick="bulkDeleteSessions()" disabled>
+                    選択したセッションを削除
+                </button>
+                <span id="selectedCount" style="margin-left: 10px; color: #666;">
+                    選択中: 0件
+                </span>
+            </div>
+            <div id="sessionTableContainer">
+                <!-- セッション詳細テーブルがここに表示されます -->
+            </div>
+        </div>
+        
+        <div id="promiseList">
+            <!-- 秘密の約束リストがここに表示されます -->
+        </div>
+    </div>
+
+    <!-- セッション詳細モーダル -->
+    <div id="sessionModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 class="modal-title">セッション詳細情報</h2>
+            <div id="sessionModalContent">
+                <!-- セッション詳細内容がここに表示されます -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        async function refreshData() {
+            try {
+                showMessage('データを読み込み中...', 'loading');
+                
+                // 統計情報を取得
+                const statsResponse = await fetch(`${API_BASE}/api/session_store_stats`);
+                const stats = await statsResponse.json();
+                
+                // セッション詳細情報を取得
+                const infoResponse = await fetch(`${API_BASE}/api/session_store_info`);
+                const info = await infoResponse.json();
+                
+                displayStats(stats);
+                displaySessionDetails(info);
+                displayPromiseList(stats.promise_list);
+                
+                // 自動削除されたセッションがある場合は通知
+                if (info.auto_deleted_sessions && info.auto_deleted_sessions.length > 0) {
+                    showMessage(`自動削除: ${info.deleted_count}個の古いセッションを削除しました`, 'warning');
+                }
+                
+                // 最終更新時間を表示
+                updateLastUpdateTime();
+                
+                // ローディングメッセージをクリア
+                document.getElementById('messageArea').innerHTML = '';
+                
+            } catch (error) {
+                showMessage(`エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        function displayStats(stats) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${stats.total_sessions || 0}</div>
+                    <div class="stat-label">総セッション数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.sessions_with_promise || 0}</div>
+                    <div class="stat-label">秘密の約束あり</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.sessions_with_username || 0}</div>
+                    <div class="stat-label">ユーザー名設定済み</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.total_conversations || 0}</div>
+                    <div class="stat-label">総会話数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.active_characters?.length || 0}</div>
+                    <div class="stat-label">ユーザ設定済みキャラ</div>
+                </div>
+            `;
+        }
+        
+        function displaySessionDetails(info) {
+            const sessionTableContainer = document.getElementById('sessionTableContainer');
+            
+            if (info.error) {
+                sessionTableContainer.innerHTML = `<div class="error">${info.error}</div>`;
+                return;
+            }
+            
+            let tableHTML = `
+                <table class="session-table">
+                    <thead>
+                        <tr>
+                            <th>選択</th>
+                            <th>セッションID</th>
+                            <th>ユーザー名</th>
+                            <th>秘密の約束</th>
+                            <th>会話数</th>
+                            <th>TTS</th>
+                            <th>キャラクター</th>
+                            <th>作成時間</th>
+                            <th>最終活動</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            for (const [sessionId, data] of Object.entries(info.sessions || {})) {
+                const hasPromise = data.promise ? '✅' : '❌';
+                const ttsStatus = data.tts_enable ? '🔊' : '🔇';
+                
+                tableHTML += `
+                    <tr>
+                        <td><input type="checkbox" class="session-checkbox" value="${sessionId}" onchange="updateSelectedCount()"></td>
+                        <td><code class="session-id-link" onclick="showSessionDetail('${sessionId}')">${sessionId}</code></td>
+                        <td>${data.userName || 'ユーザー'}</td>
+                        <td>${hasPromise} ${data.promise ? '(設定済み)' : '(未設定)'}</td>
+                        <td>${data.conversation_count || 0}</td>
+                        <td>${ttsStatus}</td>
+                        <td>${data.character_id || '未設定'}</td>
+                        <td>${data.created_at || '不明'}</td>
+                        <td>${data.last_activity || '不明'}</td>
+                        <td>
+                            <button class="delete-btn" onclick="deleteSession('${sessionId}')">削除</button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+            
+            sessionTableContainer.innerHTML = tableHTML;
+        }
+        
+        function displayPromiseList(promiseList) {
+            const promiseListDiv = document.getElementById('promiseList');
+            
+            if (!promiseList || promiseList.length === 0) {
+                promiseListDiv.innerHTML = '<h2>🔐 秘密の約束</h2><p>設定された秘密の約束がありません。</p>';
+                return;
+            }
+            
+            let html = '<h2>🔐 秘密の約束一覧</h2><div class="promise-list">';
+            
+            promiseList.forEach(item => {
+                html += `
+                    <div class="promise-item">
+                        <strong>セッション:</strong> <code>${item.session_id}</code><br>
+                        <strong>ユーザー名:</strong> ${item.userName}<br>
+                        <strong>約束:</strong> "${item.promise}"
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            promiseListDiv.innerHTML = html;
+        }
+        
+        async function saveSessionStore() {
+            try {
+                const response = await fetch(`${API_BASE}/api/save_session_store`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.error) {
+                    showMessage(result.error, 'error');
+                } else {
+                    showMessage(result.message, 'success');
+                }
+            } catch (error) {
+                showMessage(`保存エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function loadSessionStore() {
+            try {
+                const response = await fetch(`${API_BASE}/api/load_session_store`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.error) {
+                    showMessage(result.error, 'error');
+                } else {
+                    showMessage(result.message, 'success');
+                    refreshData(); // データを再読み込み
+                }
+            } catch (error) {
+                showMessage(`読み込みエラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function deleteSession(sessionId) {
+            if (!confirm(`セッション ${sessionId} を削除しますか？`)) {
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('sessionId', sessionId);
+                
+                const response = await fetch(`${API_BASE}/api/delete_session`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.error) {
+                    showMessage(result.error, 'error');
+                } else {
+                    showMessage(result.message, 'success');
+                    refreshData(); // データを再読み込み
+                }
+            } catch (error) {
+                showMessage(`削除エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function clearAllSessions() {
+            if (!confirm('すべてのセッションを削除します。この操作は取り消せません。本当に実行しますか？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/clear_all_sessions`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.error) {
+                    showMessage(result.error, 'error');
+                } else {
+                    showMessage(result.message, 'success');
+                    refreshData(); // データを再読み込み
+                }
+            } catch (error) {
+                showMessage(`削除エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function cleanupOldSessions() {
+            if (!confirm('条件に合致する古いセッション（秘密の約束・ユーザー名未設定、会話なし、1日以上非アクティブ）を削除しますか？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/cleanup_old_sessions`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.error) {
+                    showMessage(result.error, 'error');
+                } else {
+                    if (result.deleted_count > 0) {
+                        showMessage(`${result.deleted_count}個の古いセッションを削除しました`, 'success');
+                        console.log('削除されたセッション:', result.deleted_sessions);
+                    } else {
+                        showMessage(result.message, 'info');
+                    }
+                    refreshData(); // データを再読み込み
+                }
+            } catch (error) {
+                showMessage(`クリーンアップエラー: ${error.message}`, 'error');
+            }
+        }
+        
+        function showMessage(message, type) {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+        
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            const lastUpdateElement = document.getElementById('lastUpdateTime');
+            if (lastUpdateElement) {
+                lastUpdateElement.textContent = `最終更新: ${timeString}`;
+            }
+        }
+        
+        // ページ読み込み時にデータを取得
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            setupModalEvents();
+        });
+        
+        // 30秒ごとに自動更新
+        setInterval(refreshData, 30000);
+        
+        // セッション詳細表示機能
+        function showSessionDetail(sessionId) {
+            // セッション詳細情報を取得
+            fetch(`${API_BASE}/api/session_store_info`)
+                .then(response => response.json())
+                .then(data => {
+                    const session = data.sessions[sessionId];
+                    if (session) {
+                        displaySessionDetailModal(sessionId, session);
+                    } else {
+                        showMessage(`セッション ${sessionId} が見つかりません`, 'error');
+                    }
+                })
+                .catch(error => {
+                    showMessage(`セッション詳細の取得に失敗しました: ${error.message}`, 'error');
+                });
+        }
+
+        function displaySessionDetailModal(sessionId, sessionData) {
+            const modalContent = document.getElementById('sessionModalContent');
+            
+            // 要素が存在しない場合のエラーハンドリング
+            if (!modalContent) {
+                console.error('Modal content element not found');
+                showMessage('モーダル表示エラーが発生しました', 'error');
+                return;
+            }
+            
+            // 基本情報
+            const createdAt = new Date(sessionData.created_at).toLocaleString('ja-JP');
+            const lastActivity = sessionData.last_activity ? 
+                new Date(sessionData.last_activity).toLocaleString('ja-JP') : 'なし';
+            
+            // 会話履歴
+            let conversationHtml = '';
+            console.log('会話データ:', sessionData.conversation); // デバッグ用
+            if (sessionData.conversation && Array.isArray(sessionData.conversation) && sessionData.conversation.length > 0) {
+                sessionData.conversation.forEach((entry, index) => {
+                    const timestamp = entry.timestamp ? 
+                        new Date(entry.timestamp).toLocaleString('ja-JP') : 
+                        (entry.created_at ? new Date(entry.created_at).toLocaleString('ja-JP') : '');
+                    const role = entry.role || 'unknown';
+                    const content = entry.content || '';
+                    
+                    // 役割に応じてクラスを設定
+                    const roleClass = role === 'user' ? 'conversation-user' : 'conversation-assistant';
+                    
+                    conversationHtml += `
+                        <div class="conversation-entry ${roleClass}">
+                            <div class="conversation-meta">${index + 1}. ${timestamp}</div>
+                            <div class="conversation-role"><strong>役割:</strong> ${role}</div>
+                            <div class="conversation-content">${content}</div>
+                        </div>
+                    `;
+                });
+            } else {
+                conversationHtml = '<p>会話履歴がありません</p>';
+                console.log('会話履歴がありません。データ:', sessionData);
+            }
+            
+            // メモリ情報
+            let memoryHtml = '';
+            if (sessionData.memory && Object.keys(sessionData.memory).length > 0) {
+                for (const [key, value] of Object.entries(sessionData.memory)) {
+                    memoryHtml += `
+                        <div class="memory-item">
+                            <div class="memory-key">${key}:</div>
+                            <div class="memory-value">${JSON.stringify(value, null, 2)}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                memoryHtml = '<p>メモリ情報がありません</p>';
+            }
+            
+            // long_conversation_logs情報
+            let memoryLogHtml = '';
+            if (sessionData.long_conversation_logs && Object.keys(sessionData.long_conversation_logs).length > 0) {
+                for (const [key, value] of Object.entries(sessionData.long_conversation_logs)) {
+                    let displayValue;
+                    if (key === 'very_long_log' && Array.isArray(value)) {
+                        // very_long_logが配列の場合の処理
+                        if (value.length === 0) {
+                            displayValue = '(空の配列)';
+                        } else {
+                            // 配列要素を個別に編集可能な形で表示
+                            displayValue = `<div class="array-container">
+                                <div class="array-header">配列 (${value.length}件)
+                                    <button class="btn-small" onclick="addVeryLongLogItem('${sessionId}')">新規追加</button>
+                                </div>`;
+                            value.forEach((item, index) => {
+                                const timestamp = item.timestamp || '時刻不明';
+                                const role = item.role || 'unknown';
+                                const content = item.content || '';
+                                const shortContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
+                                displayValue += `
+                                    <div class="array-item" id="very-long-log-item-${index}">
+                                        <div class="array-item-header">
+                                            <span class="item-number">${index + 1}.</span>
+                                            <span class="item-timestamp">[${timestamp}]</span>
+                                            <span class="item-role">${role}</span>
+                                            <div class="item-actions">
+                                                <button class="btn-edit" onclick="editVeryLongLogItem('${sessionId}', ${index})">編集</button>
+                                                <button class="btn-delete" onclick="deleteVeryLongLogItem('${sessionId}', ${index})">削除</button>
+                                            </div>
+                                        </div>
+                                        <div class="array-item-content" id="very-long-log-content-${index}">
+                                            ${shortContent}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            displayValue += '</div>';
+                        }
+                    } else {
+                        // 従来の文字列処理
+                        displayValue = value && value.trim() !== '' ? value : '(空)';
+                    }
+                    
+                    // 編集ボタンは配列でない場合のみ表示（very_long_logは独自の編集機能を持つ）
+                    const editButton = (key === 'very_long_log') ? 
+                        '' : 
+                        `<button class="edit-btn" onclick="editDeletedLog('${sessionId}','${key}')">編集</button>`;
+                    
+                    memoryLogHtml += `
+                        <div class="memory-log-item" id="deleted-log-${key}">
+                            <div class="memory-log-key">${key} ${editButton}</div>
+                            <div class="memory-log-value" id="deleted-log-value-${key}">${displayValue}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                memoryLogHtml = '<p>長期会話ログ情報がありません</p>';
+            }
+            
+            // memory_store情報
+            let memoryStoreHtml = '';
+            if (sessionData.memory_store && Object.keys(sessionData.memory_store).length > 0) {
+                for (const [key, value] of Object.entries(sessionData.memory_store)) {
+                    const displayValue = value && value.trim() !== '' ? value : '(空)';
+                    memoryStoreHtml += `
+                        <div class="memory-store-item">
+                            <div class="memory-store-key">${key}:</div>
+                            <div class="memory-store-value">${displayValue}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                memoryStoreHtml = '<p>メモリストア情報がありません</p>';
+            }
+            
+            modalContent.innerHTML = `
+                <h3>セッション詳細: ${sessionId}</h3>
+                <div class="session-detail-section">
+                    <h4>基本情報</h4>
+                    <p><strong>ユーザー名:</strong> ${sessionData.userName || 'ユーザー'}</p>
+                    <p><strong>作成日時:</strong> ${createdAt}</p>
+                    <p><strong>最終アクティビティ:</strong> ${lastActivity}</p>
+                    <p><strong>会話数:</strong> ${sessionData.conversation ? sessionData.conversation.length : 0}</p>
+                </div>
+                <div class="session-detail-section">
+                    <button class="accordion" onclick="toggleAccordion('conversation-accordion')">
+                        <span>会話履歴 (${sessionData.conversation ? sessionData.conversation.length : 0}件)</span>
+                        <span class="accordion-icon">▼</span>
+                    </button>
+                    <div id="conversation-accordion" class="accordion-panel">
+                        <div class="conversation-history">
+                            ${conversationHtml}
+                        </div>
+                    </div>
+                </div>
+                <div class="session-detail-section">
+                    <button class="accordion" onclick="toggleAccordion('memory-accordion')">
+                        <span>メモリ情報 (memory_store)</span>
+                        <span class="accordion-icon">▼</span>
+                    </button>
+                    <div id="memory-accordion" class="accordion-panel">
+                        <div class="memory-section">
+                            ${memoryHtml}
+                        </div>
+                    </div>
+                </div>
+                <div class="session-detail-section">
+                    <button class="accordion" onclick="toggleAccordion('memory-log-accordion')">
+                        <span>長期会話ログ (long_conversation_logs)</span>
+                        <span class="accordion-icon">▼</span>
+                    </button>
+                    <div id="memory-log-accordion" class="accordion-panel">
+                        <div class="memory-log-section">
+                            ${memoryLogHtml}
+                        </div>
+                    </div>
+                </div>
+                <div class="session-detail-section">
+                    <button class="accordion" onclick="toggleAccordion('memory-store-accordion')">
+                        <span>メモリストア (memory_store)</span>
+                        <span class="accordion-icon">▼</span>
+                    </button>
+                    <div id="memory-store-accordion" class="accordion-panel">
+                        <div class="memory-store-section">
+                            ${memoryStoreHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // モーダルを表示
+            const modal = document.getElementById('sessionModal');
+            if (modal) {
+                modal.style.display = 'block';
+            } else {
+                console.error('Modal element not found');
+                showMessage('モーダル表示エラーが発生しました', 'error');
+            }
+        }
+        
+        // 長期会話ログの編集機能
+        function editDeletedLog(sessionId, key) {
+            // very_long_logが配列の場合は編集不可
+            if (key === 'very_long_log') {
+                showMessage('very_long_logは配列のため、このダッシュボードでは編集できません。', 'error');
+                return;
+            }
+            
+            const itemDiv = document.getElementById(`deleted-log-${key}`);
+            const valueDiv = document.getElementById(`deleted-log-value-${key}`);
+            if (!itemDiv || !valueDiv) return;
+            const oldValue = valueDiv.textContent;
+            itemDiv.innerHTML = `
+                <div class="memory-log-key">${key}:</div>
+                <textarea id="edit-deleted-log-textarea-${key}" style="width:70%;height:12em;">${oldValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+                <input type="hidden" id="edit-deleted-log-oldvalue-${key}" value="${oldValue.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}">
+                <button onclick="saveDeletedLog('${sessionId}','${key}')">保存</button>
+                <button onclick="cancelEditDeletedLog('${sessionId}','${key}')">キャンセル</button>
+            `;
+        }
+
+        function cancelEditDeletedLog(sessionId, key) {
+            const itemDiv = document.getElementById(`deleted-log-${key}`);
+            if (!itemDiv) return;
+            // hidden inputから元の値を取得
+            const oldValueInput = document.getElementById(`edit-deleted-log-oldvalue-${key}`);
+            const oldValue = oldValueInput ? oldValueInput.value : '';
+            itemDiv.innerHTML = `
+                <div class="memory-log-key">${key}: <button class="edit-btn" onclick="editDeletedLog('${sessionId}','${key}')">編集</button></div>
+                <div class="memory-log-value" id="deleted-log-value-${key}">${oldValue}</div>
+            `;
+        }
+
+        async function saveDeletedLog(sessionId, key) {
+            const textarea = document.getElementById(`edit-deleted-log-textarea-${key}`);
+            if (!textarea) return;
+            const newValue = textarea.value;
+            try {
+                const res = await fetch(`${API_BASE}/api/update_deleted_log`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, key: key, value: newValue })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showMessage('長期会話ログを更新しました', 'success');
+                    cancelEditDeletedLog(sessionId, key);
+                } else {
+                    showMessage('更新に失敗しました: ' + (result.error || ''), 'error');
+                }
+            } catch (e) {
+                showMessage('通信エラー: ' + e.message, 'error');
+            }
+        }
+
+        // グローバル関数として登録
+        window.editDeletedLog = editDeletedLog;
+        window.cancelEditDeletedLog = cancelEditDeletedLog;
+        window.saveDeletedLog = saveDeletedLog;
+        window.editVeryLongLogItem = editVeryLongLogItem;
+        window.deleteVeryLongLogItem = deleteVeryLongLogItem;
+        window.addVeryLongLogItem = addVeryLongLogItem;
+        window.saveVeryLongLogItem = saveVeryLongLogItem;
+        window.cancelVeryLongLogEdit = cancelVeryLongLogEdit;
+        
+        // very_long_log配列要素の編集機能
+        let currentSessionData = null; // 現在編集中のセッションデータを保存
+        
+        async function editVeryLongLogItem(sessionId, index) {
+            try {
+                // 現在のセッションデータを取得
+                const response = await fetch(`${API_BASE}/api/session_store_info`);
+                const info = await response.json();
+                const sessionData = info.sessions[sessionId];
+                
+                if (!sessionData || !sessionData.long_conversation_logs || !sessionData.long_conversation_logs.very_long_log) {
+                    showMessage('データの取得に失敗しました', 'error');
+                    return;
+                }
+                
+                currentSessionData = sessionData;
+                const item = sessionData.long_conversation_logs.very_long_log[index];
+                const itemDiv = document.getElementById(`very-long-log-item-${index}`);
+                
+                if (!itemDiv || !item) return;
+                
+                // 編集フォームを表示
+                itemDiv.innerHTML = `
+                    <div class="edit-form">
+                        <label>役割:</label>
+                        <select id="edit-role-${index}">
+                            <option value="user" ${item.role === 'user' ? 'selected' : ''}>user</option>
+                            <option value="assistant" ${item.role === 'assistant' ? 'selected' : ''}>assistant</option>
+                        </select>
+                        
+                        <label>タイムスタンプ:</label>
+                        <input type="text" id="edit-timestamp-${index}" value="${item.timestamp || ''}" placeholder="YYYY-MM-DD HH:MM:SS">
+                        
+                        <label>内容:</label>
+                        <textarea id="edit-content-${index}" placeholder="メッセージ内容">${item.content || ''}</textarea>
+                        
+                        <div class="edit-form-actions">
+                            <button class="btn-save" onclick="saveVeryLongLogItem('${sessionId}', ${index})">保存</button>
+                            <button class="btn-cancel" onclick="cancelVeryLongLogEdit('${sessionId}', ${index})">キャンセル</button>
+                        </div>
+                    </div>
+                `;
+                
+            } catch (error) {
+                showMessage(`編集準備エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function saveVeryLongLogItem(sessionId, index) {
+            try {
+                const role = document.getElementById(`edit-role-${index}`).value;
+                const timestamp = document.getElementById(`edit-timestamp-${index}`).value;
+                const content = document.getElementById(`edit-content-${index}`).value;
+                
+                // バリデーション
+                if (!content.trim()) {
+                    showMessage('内容を入力してください', 'error');
+                    return;
+                }
+                
+                // APIに保存リクエスト
+                const response = await fetch(`${API_BASE}/api/update_very_long_log_item`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        index: index,
+                        item: {
+                            role: role,
+                            content: content,
+                            timestamp: timestamp || new Date().toISOString().slice(0, 19).replace('T', ' ')
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('配列要素を更新しました', 'success');
+                    // モーダルを再表示して変更を反映
+                    showSessionDetail(sessionId);
+                } else {
+                    showMessage('更新に失敗しました: ' + (result.error || ''), 'error');
+                }
+                
+            } catch (error) {
+                showMessage(`保存エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function deleteVeryLongLogItem(sessionId, index) {
+            if (!confirm('この配列要素を削除しますか？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/delete_very_long_log_item`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        index: index
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('配列要素を削除しました', 'success');
+                    // モーダルを再表示して変更を反映
+                    showSessionDetail(sessionId);
+                } else {
+                    showMessage('削除に失敗しました: ' + (result.error || ''), 'error');
+                }
+                
+            } catch (error) {
+                showMessage(`削除エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        async function addVeryLongLogItem(sessionId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/add_very_long_log_item`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        item: {
+                            role: 'user',
+                            content: '新しいメッセージ',
+                            timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('新しい要素を追加しました', 'success');
+                    // モーダルを再表示して変更を反映
+                    showSessionDetail(sessionId);
+                } else {
+                    showMessage('追加に失敗しました: ' + (result.error || ''), 'error');
+                }
+                
+            } catch (error) {
+                showMessage(`追加エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        function cancelVeryLongLogEdit(sessionId, index) {
+            // モーダルを再表示して編集をキャンセル
+            showSessionDetail(sessionId);
+        }
+        
+        // 選択削除機能
+        function toggleAllSessions() {
+            const selectAllCheckbox = document.getElementById('selectAllSessions');
+            const sessionCheckboxes = document.querySelectorAll('.session-checkbox');
+            
+            sessionCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+            
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            const selectedCheckboxes = document.querySelectorAll('.session-checkbox:checked');
+            const count = selectedCheckboxes.length;
+            
+            document.getElementById('selectedCount').textContent = `選択中: ${count}件`;
+            document.getElementById('bulkDeleteBtn').disabled = count === 0;
+            
+            // 全選択チェックボックスの状態を更新
+            const allCheckboxes = document.querySelectorAll('.session-checkbox');
+            const selectAllCheckbox = document.getElementById('selectAllSessions');
+            
+            if (count === 0) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = false;
+            } else if (count === allCheckboxes.length) {
+                selectAllCheckbox.indeterminate = false;
+                selectAllCheckbox.checked = true;
+            } else {
+                selectAllCheckbox.indeterminate = true;
+            }
+        }
+        
+        async function bulkDeleteSessions() {
+            const selectedCheckboxes = document.querySelectorAll('.session-checkbox:checked');
+            const sessionIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+            
+            if (sessionIds.length === 0) {
+                showMessage('削除するセッションが選択されていません', 'error');
+                return;
+            }
+            
+            if (!confirm(`選択した${sessionIds.length}個のセッションを削除しますか？この操作は取り消せません。`)) {
+                return;
+            }
+            
+            try {
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (const sessionId of sessionIds) {
+                    try {
+                        const formData = new FormData();
+                        formData.append('sessionId', sessionId);
+                        
+                        const response = await fetch(`${API_BASE}/api/delete_session`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const result = await response.json();
+                        
+                        if (result.error) {
+                            console.error(`セッション ${sessionId} の削除に失敗:`, result.error);
+                            errorCount++;
+                        } else {
+                            successCount++;
+                        }
+                    } catch (error) {
+                        console.error(`セッション ${sessionId} の削除中にエラー:`, error);
+                        errorCount++;
+                    }
+                }
+                
+                if (successCount > 0) {
+                    showMessage(`${successCount}個のセッションを削除しました${errorCount > 0 ? ` (${errorCount}個のエラー)` : ''}`, 'success');
+                    // 選択状態をリセット
+                    resetSelectionState();
+                    refreshData(); // データを再読み込み
+                } else {
+                    showMessage('セッションの削除に失敗しました', 'error');
+                }
+                
+            } catch (error) {
+                showMessage(`一括削除エラー: ${error.message}`, 'error');
+            }
+        }
+        
+        // 選択状態をリセットする関数
+        function resetSelectionState() {
+            // 全選択チェックボックスのリセット
+            const selectAllCheckbox = document.getElementById('selectAllSessions');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+            
+            // 個別チェックボックスのリセット
+            const sessionCheckboxes = document.querySelectorAll('.session-checkbox');
+            sessionCheckboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            
+            // 選択カウントと削除ボタンの状態をリセット
+            document.getElementById('selectedCount').textContent = '選択中: 0件';
+            document.getElementById('bulkDeleteBtn').disabled = true;
+        }
+        
+        // アコーディオンの開閉制御
+        function toggleAccordion(accordionId) {
+            const panel = document.getElementById(accordionId);
+            const button = event.target.closest('.accordion');
+            
+            if (panel && button) {
+                const isOpen = panel.classList.contains('show');
+                
+                if (isOpen) {
+                    // 閉じる
+                    panel.classList.remove('show');
+                    button.classList.remove('active');
+                } else {
+                    // 開く
+                    panel.classList.add('show');
+                    button.classList.add('active');
+                }
+            }
+        }
+        
+        // モーダルを閉じる機能
+        function setupModalEvents() {
+            const modal = document.getElementById('sessionModal');
+            const closeBtn = document.querySelector('.close');
+            
+            if (modal && closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    modal.style.display = 'none';
+                });
+                
+                window.addEventListener('click', function(event) {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            } else {
+                console.warn('Modal elements not found during setup');
+            }
+        }
+    </script>
+</body>
+</html>
