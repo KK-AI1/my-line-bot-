@@ -1,3 +1,7 @@
+google-generativeai
+Flask
+line-bot-sdk
+
 # Chat Memory System 本番用依存関係
 
 # Web Framework
